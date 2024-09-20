@@ -6,7 +6,7 @@ from scipy.spatial.distance import jensenshannon
 import pickle
 import tqdm
 # import pandas as pd
-from sw_scanner_lib import round_up_to_minute, round_down_to_minute,f
+from sw_scanner_lib import f, js_distance
 from gc import collect
 import sys
 import time
@@ -16,6 +16,7 @@ from pathlib import Path
 def SolarWindScanner(
     Btot,
     Dist_au,
+    Bvec,
     settings = None,
     verbose = False,
     Ncores = 8,
@@ -52,9 +53,9 @@ def SolarWindScanner(
 
     if verbose:
         print("\n")
-        print("-------------------------------------------")
-        print("        Solar Wind Scanner Parallel")
-        print("-------------------------------------------")
+        print("-------------------------------------------------")
+        print("        Solar Wind Scanner Parallel Ndims")
+        print("-------------------------------------------------")
         print("\n")
         print("---- Settings ----\n")
         for k,v in settings.items():
@@ -78,23 +79,6 @@ def SolarWindScanner(
     step = settings['step']
     xgrid = settings['xgrid']
 
-    N = 0
-    
-    # win_list = []
-    # nsteps_list = []
-    # for i1, win in enumerate(wins):
-    #     tstart0 = xgrid[0]
-    #     tend0 = tstart0 + win
-    #     tends = np.arange(tend0, xgrid[-1], step)
-    #     N1 = len(tends)
-    #     N = N+N1
-    #     for j1 in range(N1):
-    #         win_list.append(win)
-    #         nsteps_list.append(j1)
-
-    # win_list = np.array(win_list, dtype = np.timedelta64)
-    # nsteps_list = np.array(nsteps_list, dtype = int)
-
     N = len(xgrid) * len(wins)
 
 
@@ -105,6 +89,7 @@ def SolarWindScanner(
 
     alloc_input = {
         'Btot': Btot,
+        'Bvec': Bvec,
         'Dist_au': Dist_au,
         'settings': settings,
         # 'win_list': win_list,
@@ -196,8 +181,9 @@ def SolarWindScanner(
 
 
 def InitParallelAllocation(alloc_input):
-    global Btot, Dist_au, settings, starting_index
+    global Btot, Bvec, Dist_au, settings, starting_index
     Btot = alloc_input['Btot']
+    Bvec = alloc_input['Bvec']
     Dist_au = alloc_input['Dist_au']
     settings = alloc_input['settings']
     # win_list = alloc_input['win_list']
@@ -208,7 +194,7 @@ def InitParallelAllocation(alloc_input):
 
 def SolarWindScannerInnerLoopParallel(i1):
     # access global variables
-    global Btot, Dist_au, settings, starting_index
+    global Btot, Bvec, Dist_au, settings, starting_index
 
     i1 = starting_index + i1
 
@@ -251,6 +237,7 @@ def SolarWindScannerInnerLoopParallel(i1):
             skip_size = 1
 
         btot = Btot[id0:id1:skip_size]
+        bvec = Bvec[id0:id1:skip_size,:]
 
         nan_infos = {
             'ids': {'id0': id0, 'id1': id1, 'skip_size': skip_size, 'len': len(btot)}
@@ -258,13 +245,13 @@ def SolarWindScannerInnerLoopParallel(i1):
         nan_infos['flag'] = 1
     except:
         btot = None
+        bvec = None
         nan_infos = {
             'ids': {'id0': np.nan, 'id1': np.nan, 'skip_size': np.nan, 'len': np.nan}
         }
         nan_infos['flag'] = 0
 
     if normality_mode == 'fit':
-        # r = np.copy(Dist_au[id0:id1:skip_size])
         divergence = settings['divergence']
 
         try:
@@ -276,6 +263,7 @@ def SolarWindScannerInnerLoopParallel(i1):
 
             # normalize btot with r
             btot1 = btot * ((r/r[0])**scale)
+            bvec1 = bvec * np.reshape(((r/r[0])**scale), (len(r),1))
 
             # dist ratio
             r_ratio = np.max(r)/np.min(r)
@@ -296,6 +284,7 @@ def SolarWindScannerInnerLoopParallel(i1):
             pdf_gaussian = stats.norm.pdf(bin_midpoints, 0, 1)
 
             js_div = jensenshannon(hist_data, pdf_gaussian)
+
 
             scan = {
                 't0': tstart,
@@ -313,14 +302,38 @@ def SolarWindScannerInnerLoopParallel(i1):
                 'id0': nan_infos['ids']['id0'],
                 'id1': nan_infos['ids']['id1'],
                 'skip_size': nan_infos['ids']['skip_size'],
-                'mean_unscaled': np.mean(btot),
-                'std_unscaled': np.std(btot),
-                'skew_unscaled': stats.skew(btot),
-                'kurt_unscaled': stats.kurtosis(btot),
-                'mean': np.mean(btot1),
-                'std': np.std(btot1),
-                'skew': stats.skew(btot1),
-                'kurt': stats.kurtosis(btot1)
+                'btot_mean_unscaled': np.mean(btot),
+                'btot_std_unscaled': np.std(btot),
+                'btot_skew_unscaled': stats.skew(btot),
+                'btot_kurt_unscaled': stats.kurtosis(btot),
+                'btot_mean': np.mean(btot1),
+                'btot_std': np.std(btot1),
+                'btot_skew': stats.skew(btot1),
+                'btot_kurt': stats.kurtosis(btot1),
+                'br_mean_unscaled': np.mean(bvec[:,0]),
+                'br_std_unscaled': np.std(bvec[:,0]),
+                'br_skew_unscaled': stats.skew(bvec[:,0]),
+                'br_kurt_unscaled': stats.kurtosis(bvec[:,0]),
+                'br_mean': np.mean(bvec1[:,0]),
+                'br_std': np.std(bvec1[:,0]),
+                'br_skew': stats.skew(bvec1[:,0]),
+                'br_kurt': stats.kurtosis(bvec1[:,0]),
+                'bt_mean_unscaled': np.mean(bvec[:,1]),
+                'bt_std_unscaled': np.std(bvec[:,1]),
+                'bt_skew_unscaled': stats.skew(bvec[:,1]),
+                'bt_kurt_unscaled': stats.kurtosis(bvec[:,1]),
+                'bt_mean': np.mean(bvec1[:,1]),
+                'bt_std': np.std(bvec1[:,1]),
+                'bt_skew': stats.skew(bvec1[:,1]),
+                'bt_kurt': stats.kurtosis(bvec1[:,1]),
+                'bn_mean_unscaled': np.mean(bvec[:,2]),
+                'bn_std_unscaled': np.std(bvec[:,2]),
+                'bn_skew_unscaled': stats.skew(bvec[:,2]),
+                'bn_kurt_unscaled': stats.kurtosis(bvec[:,2]),
+                'bn_mean': np.mean(bvec1[:,2]),
+                'bn_std': np.std(bvec1[:,2]),
+                'bn_skew': stats.skew(bvec1[:,2]),
+                'bn_kurt': stats.kurtosis(bvec1[:,2]),
             }
 
 
@@ -329,6 +342,7 @@ def SolarWindScannerInnerLoopParallel(i1):
             rfit = (
                 np.array([np.nan,np.nan]), np.array([[np.nan,np.nan],[np.nan,np.nan]])
             )
+
             scan = {
                 't0': tstart,
                 't1': tend,
@@ -345,217 +359,40 @@ def SolarWindScannerInnerLoopParallel(i1):
                 'id0': nan_infos['ids']['id0'],
                 'id1': nan_infos['ids']['id1'],
                 'skip_size': nan_infos['ids']['skip_size'],
-                'mean_unscaled': np.nan,
-                'std_unscaled': np.nan,
-                'skew_unscaled': np.nan,
-                'kurt_unscaled': np.nan,
-                'mean': np.nan,
-                'std': np.nan,
-                'skew': np.nan,
-                'kurt': np.nan
+                'btot_mean_unscaled': np.nan,
+                'btot_std_unscaled': np.nan,
+                'btot_skew_unscaled': np.nan,
+                'btot_kurt_unscaled': np.nan,
+                'btot_mean': np.nan,
+                'btot_std': np.nan,
+                'btot_skew': np.nan,
+                'btot_kurt': np.nan,
+                'br_mean_unscaled': np.nan,
+                'br_std_unscaled': np.nan,
+                'br_skew_unscaled': np.nan,
+                'br_kurt_unscaled': np.nan,
+                'br_mean': np.nan,
+                'br_std': np.nan,
+                'br_skew': np.nan,
+                'br_kurt': np.nan,
+                'bt_mean_unscaled': np.nan,
+                'bt_std_unscaled': np.nan,
+                'bt_skew_unscaled': np.nan,
+                'bt_kurt_unscaled': np.nan,
+                'bt_mean': np.nan,
+                'bt_std': np.nan,
+                'bt_skew': np.nan,
+                'bt_kurt': np.nan,
+                'bn_mean_unscaled': np.nan,
+                'bn_std_unscaled': np.nan,
+                'bn_skew_unscaled': np.nan,
+                'bn_kurt_unscaled': np.nan,
+                'bn_mean': np.nan,
+                'bn_std': np.nan,
+                'bn_skew': np.nan,
+                'bn_kurt': np.nan,
             }
 
-
-    elif normality_mode == 'no_fit':
-
-        divergence = settings['divergence']
-
-        try:
-
-            x = btot
-
-            # rescale x
-            x = (x-np.mean(x))/np.std(x)
-
-            # calculate pdf of x
-            nbins = divergence['js']['nbins']
-            bins = np.linspace(-n_sigma, n_sigma, nbins)
-            hist_data, bin_edges_data = np.histogram(x, bins=bins, density=True)
-            outside_count = np.sum(x < bins[0]) + np.sum(x > bins[-1])
-
-
-            # Compute the PDF of the Gaussian distribution at the mid-points of the histogram bins
-            bin_midpoints = bin_edges_data[:-1] + np.diff(bin_edges_data) / 2
-            pdf_gaussian = stats.norm.pdf(bin_midpoints, 0, 1)
-
-            js_div = jensenshannon(hist_data, pdf_gaussian)
-
-            scan = {
-                't0': tstart,
-                't1': tend,
-                'win': win,
-                'tmid': tstart + win/2,
-                'js': js_div,
-                'outside_count': outside_count,
-                'len': nan_infos['ids']['len'],
-                'nan_flag': nan_infos['flag'],
-                'id0': nan_infos['ids']['id0'],
-                'id1': nan_infos['ids']['id1'],
-                'skip_size': nan_infos['ids']['skip_size'],
-                'mean': np.mean(btot),
-                'std': np.std(btot),
-                'skew': stats.skew(btot),
-                'kurt': stats.kurtosis(btot)
-            }
-
-
-        except:
-            # raise ValueError("fuck")
-            scan = {
-                't0': tstart,
-                't1': tend,
-                'win': win,
-                'tmid': tstart + win/2,
-                'js': np.nan,
-                'outside_count': np.nan,
-                'len': nan_infos['ids']['len'],
-                'nan_flag': nan_infos['flag'],
-                'id0': nan_infos['ids']['id0'],
-                'id1': nan_infos['ids']['id1'],
-                'skip_size': nan_infos['ids']['skip_size'],
-                'mean': np.nan,
-                'std': np.nan,
-                'skew': np.nan,
-                'kurt': np.nan
-            }
-
-    elif normality_mode == 'hist_moments_no_fit':
-
-
-        try:
-
-            scan = {
-                't0': tstart,
-                't1': tend,
-                'win': win,
-                'tmid': tstart + win/2,
-                'len': nan_infos['ids']['len'],
-                'nan_flag': nan_infos['flag'],
-                'id0': nan_infos['ids']['id0'],
-                'id1': nan_infos['ids']['id1'],
-                'skip_size': nan_infos['ids']['skip_size'],
-                'mean': np.mean(btot),
-                'std': np.std(btot),
-                'skew': stats.skew(btot),
-                'kurt': stats.kurtosis(btot)
-            }
-
-
-        except:
-            # raise ValueError("fuck")
-            scan = {
-                't0': tstart,
-                't1': tend,
-                'win': win,
-                'tmid': tstart + win/2,
-                'len': nan_infos['ids']['len'],
-                'nan_flag': nan_infos['flag'],
-                'id0': nan_infos['ids']['id0'],
-                'id1': nan_infos['ids']['id1'],
-                'skip_size': nan_infos['ids']['skip_size'],
-                'mean': np.nan,
-                'std': np.nan,
-                'skew': np.nan,
-                'kurt': np.nan
-            }
-
-    elif normality_mode == 'all_inclusive':
-        r = Dist_au[id0:id1:skip_size]
-        divergence = settings['divergence']
-        nbins = divergence['js']['nbins']
-        n_sigma = settings['n_sigma']
-
-        try:
-
-            # calculate the distance
-            distances = {}
-            outside_counts = {}
-
-            x = btot
-
-            # unscaled js
-            js_div, outside_count = js_distance(x, n_sigma, nbins)
-            distances['js'] = js_div
-            outside_counts['js'] = outside_count
-            
-            # unscaled log10 js
-            js_div, outside_count = js_distance(np.log10(x), n_sigma, nbins)
-            distances['js_log10'] = js_div
-            outside_counts['js_log10'] = outside_count
-
-            # find the rescaling scale with r
-            rfit = curve_fit(f, np.log10(r), np.log10(btot))
-            scale = -rfit[0][0]
-
-            # normalize btot with r
-            btot1 = btot * ((r/r[0])**scale)
-
-            # dist ratio
-            r_ratio = np.max(r)/np.min(r)
-            
-            x = btot1
-
-            # normal js
-            js_div, outside_count = js_distance(x, n_sigma, nbins)
-            distances['js_scaled'] = js_div
-            outside_counts['js_scaled'] = outside_count
-
-            # log10 js
-            js_div, outside_count = js_distance(np.log10(x), n_sigma, nbins)
-            distances['js_scaled_log10'] = js_div
-            outside_counts['js_scaled_log10'] = outside_count
-
-
-            scan = {
-                't0': tstart,
-                't1': tend,
-                'win': win,
-                'distances': distances,
-                'r_ratio': r_ratio,
-                'nan_infos': nan_infos,
-                'fit_results': rfit,
-                'outside_counts': outside_counts
-            }
-
-
-        except:
-            # raise ValueError("fuck")
-            rfit = (
-                np.array([np.nan,np.nan]), np.array([[np.nan,np.nan],[np.nan,np.nan]])
-            )
-            distances = {
-                'js':np.nan,
-                'js_scaled':np.nan,
-                'js_scaled_log10':np.nan,
-                'js_log10':np.nan,
-            }
-            outside_counts = {
-                'js':np.nan,
-                'js_scaled':np.nan,
-                'js_scaled_log10':np.nan,
-                'js_log10':np.nan,
-            }
-
-            scan = {
-                't0': tstart,
-                't1': tend,
-                'win': win,
-                'distances': distances,
-                'nan_infos': nan_infos,
-                'fit_results': rfit,
-                'outside_counts': outside_counts
-            }
-
-
-
-    elif normality_mode == 'find_nan':
-
-        scan = {
-            't0': tstart,
-            't1': tend,
-            'win': win,
-            'nan_infos': nan_infos
-        }
 
 
     else:
@@ -568,23 +405,3 @@ def SolarWindScannerInnerLoopParallel(i1):
     return scan
 
 
-
-
-
-def js_distance(x, n_sigma, nbins):
-
-    # rescale x
-    x = (x-np.mean(x))/np.std(x)
-
-    # calculate pdf of x
-    bins = np.linspace(-n_sigma, n_sigma, nbins)
-    hist_data, bin_edges_data = np.histogram(x, bins=bins, density=True)
-    outside_count = np.sum(x < bins[0]) + np.sum(x > bins[-1])
-
-    # Compute the PDF of the Gaussian distribution at the mid-points of the histogram bins
-    bin_midpoints = bin_edges_data[:-1] + np.diff(bin_edges_data) / 2
-    pdf_gaussian = stats.norm.pdf(bin_midpoints, 0, 1)
-
-    js_div = jensenshannon(hist_data, pdf_gaussian)
-
-    return js_div, outside_count
