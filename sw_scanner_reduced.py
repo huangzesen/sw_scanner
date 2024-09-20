@@ -102,6 +102,13 @@ def SolarWindScanner(
             tstart_list = np.append(tstart_list, tstart_list_temp)
             tend_list = np.append(tend_list, tend_list_temp)
 
+    # randomize tstart_list and tend_list with the same indices
+    inds = np.arange(len(tstart_list))
+    np.random.shuffle(inds)
+    tstart_list = tstart_list[inds]
+    tend_list = tend_list[inds]
+
+
     N = len(xgrid) * len(wins)
     N1 = len(tstart_list)
 
