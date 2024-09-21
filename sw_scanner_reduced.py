@@ -81,16 +81,22 @@ def SolarWindScanner(
 
     steps = np.zeros_like(wins)
 
+    step_ratio_set = 1/0.01
+
     step_ratio_0 = int(wins[0]/step0)
 
     tstart_list = []
     tend_list = []
     for i1, win in enumerate(wins):
         step_ratio = (win/step0)
-        step_factor = np.floor(step_ratio/step_ratio_0)
+        if step_ratio < step_ratio_set:
+            step_factor = 1
+        else:
+            step_factor = np.floor(step_ratio/step_ratio_set)
+
         steps[i1] = step0 * step_factor
 
-        # print(steps[i1], xgrid[0], xgrid[-1], int((xgrid[-1]-xgrid[0])/steps[i1]), print(type(xgrid[-1])))
+        print(steps[i1], xgrid[0], xgrid[-1], int((xgrid[-1]-xgrid[0])/steps[i1]), print(type(xgrid[-1])))
 
         # calculate tstart_list and tend_list
         tstart_list_temp = np.arange(xgrid[0], xgrid[-1], np.timedelta64(steps[i1],'ns'))
