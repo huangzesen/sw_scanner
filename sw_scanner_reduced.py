@@ -31,7 +31,7 @@ def SolarWindScanner(
     save_dataframe = True,
     save_pickle = False,
     loop_dir = 'y',
-):
+): 
 
     """
     Solar Wind Scanner
