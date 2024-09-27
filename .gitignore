@@ -3,3 +3,4 @@ __pycache__/sw_scanner.cpython-311.pyc
 __pycache__/sw_scanner_lib.cpython-311.pyc
 __pycache__/sw_scanner_reduced.cpython-311.pyc
 .ipynb_checkpoints/sw_scanner_reduced-checkpoint.py
+.ipynb_checkpoints/*
